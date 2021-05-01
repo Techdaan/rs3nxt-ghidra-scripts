@@ -477,7 +477,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 		Types.S_CLIENT_PROT.deleteAll();
 		resizeStructure(Types.S_CLIENT_PROT, 8);
 		Types.S_CLIENT_PROT.replaceAtOffset(0, Types.UINT, 4, "opcode", "Opcode of this ClientProt");
-		Types.S_CLIENT_PROT.replaceAtOffset(4, Types.UINT, 4, "size", "Size of this ClientProt");
+		Types.S_CLIENT_PROT.replaceAtOffset(4, Types.INT, 4, "size", "Size of this ClientProt");
 		Types.S_CLIENT_PROT.setDescription("ClientProt is also used by login packets, opcodes may overlap with in-game protocol definitions.");
 	}
 
