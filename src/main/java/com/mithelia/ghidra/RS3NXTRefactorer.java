@@ -9,6 +9,8 @@
 //@menupath NXT.RS3 NXT Refactorer
 //@toolbar
 
+package com.mithelia.ghidra;
+
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.*;
@@ -877,7 +879,7 @@ public class RS3NXTRefactorer extends GhidraScript {
             String registerName = insn.getMnemonicString().equals("CALL") ? "RAX" : insn.getRegister(0).getBaseRegister().getName();
             List<Instruction> prior = registerValues.getOrDefault(registerName, new ArrayList<>());
 
-            Set<String> blegh = new HashSet<>() {{
+            HashSet<String> blegh = new HashSet<String>() {{
                 add("SUB");
                 add("ADD");
                 add("XOR");
