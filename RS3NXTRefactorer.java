@@ -1397,7 +1397,7 @@ public class RS3NXTRefactorer extends GhidraScript {
         }
     }
     
-   /**
+    /**
      * Used to print out and int array of packet sizes and a map of opcode names.
      * This is to make updating new revision opcodes faster.
      *
@@ -1415,9 +1415,9 @@ public class RS3NXTRefactorer extends GhidraScript {
     	//Write out packet sizes in "x," format
     	for (ServerProtInfo packet : packets) {
     		if (packet.opcode == 194) {
-    			print("        " + packet.size + "\n");
+    			print("\t" + packet.size + "\n");
     		} else {
-    		print("        " + packet.size + ",\n");
+    		print("\t" + packet.size + ",\n");
     		}
     	}
     	print("    )\n");
@@ -1431,9 +1431,9 @@ public class RS3NXTRefactorer extends GhidraScript {
     	//Write out the opcode names in "x to "PACKET_NAME"" format
     	for (ServerProtInfo packetz : packets) {
     		if (packetz.opcode == 194) {
-    			print("        " + packetz.opcode + " to " + "\"" + packetz.name + "\"\n");
+    			print("\t" + packetz.opcode + " to " + "\"" + packetz.name + "\"\n");
     		} else {
-    		print("        " + packetz.opcode + " to " + "\"" + packetz.name + "\",\n");
+    		print("\t" + packetz.opcode + " to " + "\"" + packetz.name + "\",\n");
     		}
     	}
     	print("    )\n");
