@@ -9,6 +9,8 @@
 //@menupath NXT.RS3 NXT Refactorer
 //@toolbar
 
+package com.mithelia.ghidra;
+
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.*;
@@ -24,9 +26,6 @@ import java.util.*;
 public class RS3NXTRefactorer extends GhidraScript {
 
     private static String TODO_DESC = "<RS3 Refactorer: TODO>";
-    
-    //Enable this to print out packet info, copy and paste compatible with OpenRS3
-    private static Boolean printOpenRS3PacketFormat = false;
 
     private static class Types {
         // Built-ins
@@ -880,7 +879,7 @@ public class RS3NXTRefactorer extends GhidraScript {
             String registerName = insn.getMnemonicString().equals("CALL") ? "RAX" : insn.getRegister(0).getBaseRegister().getName();
             List<Instruction> prior = registerValues.getOrDefault(registerName, new ArrayList<>());
 
-            Set<String> blegh = new HashSet<>() {{
+            HashSet<String> blegh = new HashSet<String>() {{
                 add("SUB");
                 add("ADD");
                 add("XOR");
@@ -1395,47 +1394,5 @@ public class RS3NXTRefactorer extends GhidraScript {
         public String toString() {
             return "ServerProt[opcode="+opcode+", size="+size+", name="+name+", addr= "+addr+" ]";
         }
-    }
-    
-    /**
-     * Used to print out and int array of packet sizes and a map of opcode names.
-     * This is to make updating new revision opcodes faster.
-     *
-     * TODO: When the core packet class is finished, this will print out the whole
-     *  Kotlin file to make moving to different revisions as painless as possible
-     */
-    private void printOpenRS3PacketFormat() {
-
-    	//Write out comment header for packet sizes
-    	print("    /**\n");
-    	print("     * The size of all incoming packets, dumped from the RS3NXTRefactorer\n");
-    	print("     */\n");
-    	print("    val INCOMING_PACKET_SIZES: IntArray = intArrayOf(\n");
-
-    	//Write out packet sizes in "x," format
-    	for (ServerProtInfo packet : packets) {
-    		if (packet.opcode == 194) {
-    			print("\t" + packet.size + "\n");
-    		} else {
-    		print("\t" + packet.size + ",\n");
-    		}
-    	}
-    	print("    )\n");
-
-    	//Write out comment header for the opcode name map
-    	print("    /**\n");
-    	print("     * All incoming packet opcodes and names, dumped from the RS3NXTRefactorer\n");
-    	print("     */\n");
-    	print("    val OPCODE_NAMES = mapOf(\n");
-
-    	//Write out the opcode names in "x to "PACKET_NAME"" format
-    	for (ServerProtInfo packetz : packets) {
-    		if (packetz.opcode == 194) {
-    			print("\t" + packetz.opcode + " to " + "\"" + packetz.name + "\"\n");
-    		} else {
-    		print("\t" + packetz.opcode + " to " + "\"" + packetz.name + "\",\n");
-    		}
-    	}
-    	print("    )\n");
     }
 }
