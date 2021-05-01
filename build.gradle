@@ -24,7 +24,7 @@ if (System.env.GHIDRA_INSTALL_DIR) {
 } else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
     ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
 } else {
-    ghidraInstallDir = "K://Sdrive//GhidraNXT//ghidra_9.2.3_PUBLIC//"
+    ghidraInstallDir = "C:\\Users\\Development\\Downloads\\ghidra_9.1_PUBLIC_20191023\\ghidra_9.1_PUBLIC"
 }
 
 if (ghidraInstallDir) {
