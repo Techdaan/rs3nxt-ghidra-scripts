@@ -533,6 +533,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 	 * @param fn The app main entry
 	 */
 	private void refactorAppEntry(Function fn) throws Exception {
+		println("App entry at " + fn.getEntryPoint());
 		int XREF_THRESHOLD = 1500; // Min. number of references to jag::HeapInterface::Alloc
 		boolean foundAlloc = false;
 
@@ -548,6 +549,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 				continue;
 
 			// And some don't have a function at all
+
 			Function called = getFunctionAt(insn.getAddress(0));
 			if (called == null)
 				continue;
@@ -569,8 +571,10 @@ public class RS3NXTRefactorer extends GhidraScript {
 				continue;
 			}
 
-			renameFunction(called, "jag::Client::Client");
-			return;
+			if (foundAlloc) {
+				renameFunction(called, "jag::Client::Client");
+				return;
+			}
 		}
 	}
 
@@ -1237,7 +1241,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 		 * @param insn Any instruction
 		 */
 		public void update(Instruction insn) {
-			if (insn == null || ((insn.getRegisters().length == 0 || insn.getRegister(0) == null) && !insn.getMnemonicString().equals("CALL")))
+			if (insn == null || ((insn.getRegisters().size() == 0 || insn.getRegister(0) == null) && !insn.getMnemonicString().equals("CALL")))
 				return;
 
 			String registerName = insn.getMnemonicString().equals("CALL") ? "RAX" : insn.getRegister(0).getBaseRegister().getName();
