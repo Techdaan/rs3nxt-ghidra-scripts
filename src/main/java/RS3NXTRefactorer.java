@@ -301,11 +301,24 @@ public class RS3NXTRefactorer extends GhidraScript {
 		// r9  -> ?
 		Reference[] references = getReferencesTo(registerClientProt);
 		clientProt = new ClientProt[references.length];
-		printf("Found %d references to REGISTER_CLIENT_MESSAGE%n", references.length);
+		printf("Found %d references to REGISTER_CLIENT_MESSAGE at %s%n", references.length, registerClientProt.toString());
+
 		for (Reference reference : references) {
 			Instruction insn = getInstructionAt(reference.getFromAddress());
-			while (getReferencesTo(insn.getAddress()).length == 0)
+
+			outer: while (true) {
+				Reference[] referencesTo = getReferencesTo(insn.getAddress());
+
+				if (referencesTo.length != 0) {
+					for (Reference ref : referencesTo) {
+						if (ref.getReferenceType() == RefType.DATA) {
+							break outer;
+						}
+					}
+				}
+
 				insn = insn.getPrevious(); // roll back to begin of function
+			}
 
 			Address clientProt = null;
 			int opcode = -100;
@@ -338,32 +351,8 @@ public class RS3NXTRefactorer extends GhidraScript {
 
 							opcode = (int) (size + ((Scalar) insn.getOpObjects(1)[1]).getValue());
 						} else {
-							throw new RuntimeException(" unsure how to get opcode from " + insn + " [size = " + size + "]");
+							throw new RuntimeException(" unsure how to get opcode from " + insn + " [size = " + size + "] at " + insn.getAddress());
 						}
-
-						/*
-						} else if (opcodeInsns.size() == 1 && opcodeInsns.get(0).getMnemonicString().equals("LEA") && opcodeInsns.get(0).getOpObjects(1).length == 2) {
-						if (!opcodeInsns.get(0).getRegister(0).getBaseRegister().getName().equals("RDX"))
-							throw new IllegalStateException("WHAT");
-						if (!((Register) opcodeInsns.get(0).getOpObjects(1)[0]).getBaseRegister().getName().equals("R8"))
-							throw new IllegalStateException("WHAT 2");
-
-						List<Instruction> sizeInsns = t.getRegisterValues("R8");
-						boolean xoredd = false;
-
-						Instruction bs = getInstructionAt(regF.getEntryPoint());
-						Instruction ss = getInstructionAt(ref.getFromAddress());
-						while (!bs.equals(ss)) {
-							bs = bs.getNext();
-							if (bs.getMnemonicString().equals("XOR") && bs.getRegister(0).getBaseRegister().getName().equals("R8") && bs.getRegister(1).getBaseRegister().getName().equals("R8")) {
-								xoredd = true;
-							}
-						}
-
-						if (!xoredd) throw new IllegalStateException("the fuck " + sizeInsns);
-						opcode = (int) (((Scalar) opcodeInsns.get(0).getOpObjects(1)[1]).getValue());
-					}
-						 */
 
 						rdx = true;
 						break;
@@ -378,7 +367,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 
 							size = (int) (opcode + ((Scalar) insn.getOpObjects(1)[1]).getValue());
 						} else {
-							throw new RuntimeException(" unsure how to get size from " + insn + " [opcode = " + opcode + "]");
+							throw new RuntimeException(" unsure how to get size from " + insn + " [opcode = " + opcode + "] at " + insn.getAddress());
 						}
 						r8 = true;
 						break;
