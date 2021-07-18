@@ -11,16 +11,22 @@
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.*;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.*;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.*;
+import ghidra.program.util.string.FoundString;
+import ghidra.program.util.string.StringSearcher;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class RS3NXTRefactorer extends GhidraScript {
 
@@ -29,7 +35,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 		static boolean PRINT_PROTOCOL_INFO = true;
 
 		static int MIN_CLIENT_PROTS = 120; // minimum number of client prot packets, in 918 there are 124
-		static int MAX_CLIENT_PROTS = 130; // maximum number of client prot packets, in 918 there are 124
+		static int MAX_CLIENT_PROTS = 135; // maximum number of client prot packets, in 918 there are 124
 	}
 
 	private static String TODO_DESC = "<RS3 Refactorer: TODO>";
@@ -60,12 +66,30 @@ public class RS3NXTRefactorer extends GhidraScript {
 		static GhidraClass C_CLIENT_PROT;
 	}
 
+	private int getClientVersion() {
+		MemoryBlock block = getMemoryBlock(".rdata");
+		List<FoundString> strings = findStrings(new AddressSet(block.getStart(), block.getEnd()), 8, 1, true, false);
+		strings = strings.stream().filter(string -> string.getString(currentProgram.getMemory()).equals("Build: %d:%d/%s")).collect(Collectors.toList());
+		if (strings.size() != 1) {
+			throw new IllegalStateException("Failed to get client version: " + strings);
+		}
+
+		Reference[] references = getReferencesTo(strings.get(0).getAddress());
+		if (references.length != 1) {
+			throw new NullPointerException("Expected one reference, got multiple: " + Arrays.toString(references));
+		}
+
+		return 0;
+	}
+
 	@Override
 	protected void run() throws Exception {
 		//noinspection ConstantConditions
 		if (NUM_PACKETS != PACKET_NAMES.length) {
 			throw new IllegalStateException("NUM_PACKETS =/= PACKET_NAMES length");
 		}
+
+		printf("NXT v. %d%n", getClientVersion());
 
 		printf("Initializing default data types%n");
 		initDefaultDataTypes();
@@ -276,7 +300,12 @@ public class RS3NXTRefactorer extends GhidraScript {
 		Address registerClientProt = null;
 		for (Reference reference : getReferencesTo(someClientProt.subtract(4))) {
 			Instruction insn = getInstructionAt(reference.getFromAddress());
-			i = 5;
+			int j = 3;
+			while( insn.getPrevious() != null && j >= 0) {
+				insn = insn.getPrevious();
+				j--;
+			}
+			i = 8;
 			while (i-- > 0) {
 				insn = insn.getNext();
 				if (insn.getMnemonicString().equals("JMP")) {
@@ -286,7 +315,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 
 					int numReferences = getReferencesTo(insn.getAddress(0)).length;
 					if (numReferences > Settings.MIN_CLIENT_PROTS && numReferences < Settings.MAX_CLIENT_PROTS)
-						registerClientProt =insn.getAddress(0);
+						registerClientProt = insn.getAddress(0);
 					break;
 				}
 			}
@@ -304,9 +333,12 @@ public class RS3NXTRefactorer extends GhidraScript {
 		printf("Found %d references to REGISTER_CLIENT_MESSAGE at %s%n", references.length, registerClientProt.toString());
 
 		for (Reference reference : references) {
+			if (!reference.getReferenceType().isCall()) continue;
+
 			Instruction insn = getInstructionAt(reference.getFromAddress());
 
-			outer: while (true) {
+			outer:
+			while (true) {
 				Reference[] referencesTo = getReferencesTo(insn.getAddress());
 
 				if (referencesTo.length != 0) {
@@ -729,7 +761,16 @@ public class RS3NXTRefactorer extends GhidraScript {
 
 		Reference[] xrefs = getReferencesTo(ctor.getEntryPoint());
 		if (xrefs.length != 1) {
-			throw new IllegalStateException("0 or more than 1 xref to jag::ConnectionManager::ConnectionManager");
+			Address to = xrefs[0].getToAddress();
+			for (Reference xref : xrefs) {
+				if (!xref.getToAddress().equals(to))
+					throw new IllegalStateException("0 or more than 1 xref to jag::ConnectionManager::ConnectionManager");
+			}
+
+			for (Reference xref : xrefs) {
+				if (xref.getReferenceType() != RefType.DATA)
+					xrefs[0] = xref;
+			}
 		}
 
 		Instruction insn = getInstructionAt(xrefs[0].getFromAddress()).getPrevious();
@@ -809,8 +850,9 @@ public class RS3NXTRefactorer extends GhidraScript {
 				fn = getFunctionAt(fnAddr);
 				renameFunction(fn, "jag::PacketHandlers::" + nameBuilder);
 			} catch (Exception e) {
-				createFunction(fnAddr, "jag::PacketHandlers::" + nameBuilder);
+				createFunction(fnAddr, nameBuilder.toString());
 				fn = getFunctionAt(fnAddr);
+				renameFunction(fn, "jag::PacketHandlers::" + nameBuilder);
 			}
 			fn.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, false, SourceType.USER_DEFINED,
 					new ParameterImpl("param1", Types.LONGLONG, currentProgram),
@@ -849,6 +891,8 @@ public class RS3NXTRefactorer extends GhidraScript {
 				visited.remove(fn.getEntryPoint());
 				serverProtReg1 = fn;
 
+				printerr("serverProtReg1 = @ " + serverProtReg1.getName() + " " + serverProtReg1.getEntryPoint());
+
 				while (callInsn.getRegister(0) == null || !callInsn.getRegister(0).getName().equals("RDX")) {
 					callInsn = callInsn.getPrevious();
 				}
@@ -885,12 +929,15 @@ public class RS3NXTRefactorer extends GhidraScript {
 
 				Function fn3 = getFunctionAt(callTo.getAddress(0));
 				Reference[] refs = getReferencesTo(fn3.getEntryPoint());
-				if (getReferencesTo(fn3.getEntryPoint()).length != NUM_PACKETS) {
-					printerr("hmm " + callInsn + ", " + callInsn.getAddress());
+				if (((int) Stream.of(refs).filter(ref -> ref.getReferenceType().isCall()).count()) != NUM_PACKETS) {
+//				if (getReferencesTo(fn3.getEntryPoint()).length != NUM_PACKETS) {
+					printerr("invalid packet count " + callInsn + ", " + callInsn.getAddress() + " @ " + fn3.getEntryPoint());
 					return;
 				}
 
 				for (Reference ref : refs) {
+					if (!ref.getReferenceType().isCall()) continue;
+
 					Function regF = getFunctionContaining(ref.getFromAddress());
 					RegisterTracker t = new RegisterTracker();
 					Instruction b = getInstructionAt(regF.getEntryPoint());
