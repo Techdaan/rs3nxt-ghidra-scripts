@@ -69,7 +69,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 	private int getClientVersion() {
 		MemoryBlock block = getMemoryBlock(".rdata");
 		List<FoundString> strings = findStrings(new AddressSet(block.getStart(), block.getEnd()), 8, 1, true, false);
-		strings = strings.stream().filter(string -> string.getString(currentProgram.getMemory()).equals("Build: %d:%d/%s")).collect(Collectors.toList());
+		strings = strings.stream().filter(string -> string.getString(currentProgram.getMemory()).equals("Client Version: %i-%i")).collect(Collectors.toList());
 		if (strings.size() != 1) {
 			throw new IllegalStateException("Failed to get client version: " + strings);
 		}
