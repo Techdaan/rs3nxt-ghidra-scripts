@@ -69,7 +69,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 	private int getClientVersion() {
 		MemoryBlock block = getMemoryBlock(".rdata");
 		List<FoundString> strings = findStrings(new AddressSet(block.getStart(), block.getEnd()), 8, 1, true, false);
-		strings = strings.stream().filter(string -> string.getString(currentProgram.getMemory()).equals("Build: %d:%d/%s")).collect(Collectors.toList());
+		strings = strings.stream().filter(string -> string.getString(currentProgram.getMemory()).equals("Client Version: %i-%i")).collect(Collectors.toList());
 		if (strings.size() != 1) {
 			throw new IllegalStateException("Failed to get client version: " + strings);
 		}
@@ -536,6 +536,22 @@ public class RS3NXTRefactorer extends GhidraScript {
 		throw new NullPointerException("Could not find app entry function");
 	}
 
+    private boolean isValidFunctionCall(Instruction insn) {
+        if (!insn.getMnemonicString().equals("CALL"))
+            return false;
+
+        // Some call functions don't actually have addresses (eg. when using a vtable)
+        if (insn.getNumOperands() == 0 || insn.getAddress(0) == null)
+            return false;
+
+        // And some don't have a function at all
+        Function called = getFunctionAt(insn.getAddress(0));
+        if (called == null)
+            return false;
+
+        return true;
+    }
+
 	/**
 	 * Handles the app's main entry. This performs the following operations:
 	 * <p>
@@ -562,31 +578,44 @@ public class RS3NXTRefactorer extends GhidraScript {
 		for (Instruction insn : getFunctionInstructions(fn)) {
 			tracker.update(insn);
 
-			if (!insn.getMnemonicString().equals("CALL"))
-				continue;
+            if (!isValidFunctionCall(insn)) {
+                continue;
+            }
 
-			// Some call functions don't actually have addresses (eg. when using a vtable)
-			if (insn.getNumOperands() == 0 || insn.getAddress(0) == null)
-				continue;
-
-			// And some don't have a function at all
-
-			Function called = getFunctionAt(insn.getAddress(0));
-			if (called == null)
-				continue;
-
+            Function called = getFunctionAt(insn.getAddress(0));
 			if (!foundAlloc && getReferencesTo(called.getEntryPoint()).length > XREF_THRESHOLD) {
-				Instruction rcx = tracker.getRegisterValue("RCX");
-				Instruction rdx = tracker.getRegisterValue("RDX");
+                // Jag introduced a function that gets called in place of directly calling Alloc on HeapInterface
+                Instruction rcx = tracker.getRegisterValue("RCX"); // num_bytes
+                Instruction rdx = tracker.getRegisterValue("RDX"); // alignment
 
-				setLabel(rcx.getAddress(1), "jag::HeapInterface::g_pHeapInterface");
-				resizeStructure(Types.S_CLIENT, rdx.getInt(1));
+                renameFunction(called, "jag::HeapInterface::CheckedAlloc");
+                called.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, false, SourceType.USER_DEFINED,
+                        new ParameterImpl("num_bytes", Types.LONGLONG, currentProgram),
+                        new ParameterImpl("alignment", Types.LONGLONG, currentProgram));
 
-				renameFunction(called, "jag::HeapInterface::Alloc");
-				called.setCallingConvention("__thiscall");
-				called.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, false, SourceType.USER_DEFINED,
-						new ParameterImpl("num_bytes", Types.LONGLONG, currentProgram),
-						new ParameterImpl("param2", Types.LONGLONG, currentProgram));
+                resizeStructure(Types.S_CLIENT, rcx.getInt(1));
+
+                RegisterTracker tracker2 = new RegisterTracker();
+                for (Instruction insn2 : getFunctionInstructions(called)) {
+                    tracker2.update(insn2);
+
+                    if (!isValidFunctionCall(insn2)) {
+                        continue;
+                    }
+
+                    Function called2 = getFunctionAt(insn2.getAddress(0));
+                    Instruction rcx2 = tracker2.getRegisterValue("RCX"); // num_bytes
+                    Instruction rdx2 = tracker2.getRegisterValue("RDX"); // alignment
+
+                    setLabel(rcx2.getAddress(1), "jag::HeapInterface::g_pHeapInterface");
+
+                    renameFunction(called2, "jag::HeapInterface::Alloc");
+                    called2.setCallingConvention("__thiscall");
+                    called2.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, false, SourceType.USER_DEFINED,
+                            new ParameterImpl("num_bytes", Types.LONGLONG, currentProgram),
+                            new ParameterImpl("alignment", Types.LONGLONG, currentProgram));
+                    break;
+                }
 
 				foundAlloc = true;
 				continue;
