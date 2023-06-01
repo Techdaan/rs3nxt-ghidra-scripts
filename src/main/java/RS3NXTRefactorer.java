@@ -34,7 +34,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 		static boolean FIND_CLIENT_PROT = true;
 		static boolean PRINT_PROTOCOL_INFO = true;
 
-		static int MIN_CLIENT_PROTS = 120; // minimum number of client prot packets, in 918 there are 124
+		static int MIN_CLIENT_PROTS = 120;
 		static int MAX_CLIENT_PROTS = 135; // maximum number of client prot packets, in 918 there are 124
 	}
 
@@ -189,8 +189,8 @@ public class RS3NXTRefactorer extends GhidraScript {
 					continue;
 
 				if (called2.getName().equals("_Throw_C_error")) {
-					if (makeClientMessageFn != null) {
-						throw new IllegalStateException("more than one option for MakeClientMessage found, disable ClientProt finding");
+					if (makeClientMessageFn != null && makeClientMessageFn != called) {
+						throw new IllegalStateException("more than one option for MakeClientMessage found, disable ClientProt finding: " + makeClientMessageFn.getName() + ", " + called.getName());
 					}
 
 					makeClientMessageFn = called;
@@ -202,85 +202,49 @@ public class RS3NXTRefactorer extends GhidraScript {
 		return Pair.of(makeClientMessageFn, makeClientMessageInsn);
 	}
 
+	private Function findNextFunction(Instruction startingAt) {
+		for (int i = 0; i < 10; i++) {
+			if (startingAt == null) return null;
+
+			if (!startingAt.getMnemonicString().equals("CALL") && !startingAt.getMnemonicString().equals("JMP")) {
+				startingAt = startingAt.getNext();
+				continue;
+			}
+
+			if (startingAt.getAddress(0) == null) {
+				continue;
+			}
+
+			return getFunctionAt(startingAt.getAddress(0));
+		}
+
+		return null;
+	}
+
 	private void clientProtPrototype() throws Exception {
 		// reverse lookup...
-		SymbolIterator it = currentProgram.getSymbolTable().getSymbols("m_currentTimeMS");
-		if (!it.hasNext()) throw new IllegalStateException("m_currentTimeMS not found");
-		Symbol m_currentTimeMS = it.next();
-		if (it.hasNext()) throw new IllegalStateException("more than one m_currentTimeMS found?");
+		SymbolIterator it = currentProgram.getSymbolTable().getSymbols("SendPing");
+		if (!it.hasNext()) throw new IllegalStateException("SendPing not found (Obtained from ServerProt decoding)");
+		Symbol sendPingSymbol = it.next();
+		if (it.hasNext()) throw new IllegalStateException("more than one SendPing found?");
 
-		Pair<Function, Instruction> pair = null;
-		outer:
-		for (Reference ref : getReferencesTo(m_currentTimeMS.getAddress())) {
-			Function f = getFunctionContaining(ref.getFromAddress());
-			if (f == null) continue;
+		Function f = findNextFunction(getInstructionAt(sendPingSymbol.getAddress()));
+		if (f == null) {
+			throw new IllegalStateException("Failed to find inner function of SendPing (At " + sendPingSymbol.getAddress() +")");
+		}
 
-			for (Instruction insn : getFunctionInstructions(f)) {
-				if (insn.getMnemonicString().equals("MOV") && insn.getLong(2) == 0x6666666666666667L) {
-//					printf("got %s , new is %s%n", src0.getEntryPoint(), f.getEntryPoint());
-//					printf("matches = %s at %s%n", findMakeClientMessage(src0), insn.getAddress());
-					Pair<Function, Instruction> local = findMakeClientMessage(f);
-//					printf("can work = %s @ %s%n", findMakeClientMessage(f), insn.getAddress());
-					if (local.getKey() != null) {
-						if (pair != null)
-							throw new IllegalStateException("more than one MakeClientMessage qualifier found, disable ClientProt finding: " + f.getEntryPoint());
-						pair = local;
-//						printf("got %s , new is %s%n", src0.getEntryPoint(), f.getEntryPoint());
-//						printf("matches = %s at %s%n", findMakeClientMessage(src0), insn.getAddress());
-//						printf("got %s , new is %s%n", src0.getEntryPoint(), f.getEntryPoint());
-//						printf("matches = %s at %s%n", findMakeClientMessage(src0), insn.getAddress());
-					}
-
-
-//					src0 = f;
-					continue outer;
-				}
+		// TODO: If ClientProt shit breaks, this is likely it.
+		Function makeClientMessageFn = null;
+		Instruction makeClientMessageInsn = null;
+		for (Instruction insn : getFunctionInstructions(f)) {
+			if (!insn.getMnemonicString().equals("CALL")) {
+				continue;
 			}
-		}
-		if (pair == null) {
-			throw new IllegalStateException("MakeClientMessage not found, disable ClientProt finding");
-		}
-		Function makeClientMessageFn = pair.getKey();
-		Instruction makeClientMessageInsn = pair.getValue();
 
-//		printf("Found src0 on our way to ClientProt at %s%n", src0.getEntryPoint());
-//		Instruction makeClientMessageInsn = null;
-//		Function makeClientMessageFn = null;
-//		outer:
-//		for (Instruction insn : getFunctionInstructions(src0)) {
-//			if (!insn.getMnemonicString().equals("CALL"))
-//				continue;
-//			if (insn.getNumOperands() == 0 || insn.getAddress(0) == null)
-//				continue;
-//
-//			Function called = getFunctionAt(insn.getAddress(0));
-//			if (called == null)
-//				continue;
-//
-//			for (Instruction inner : getFunctionInstructions(called)) {
-//				if (!inner.getMnemonicString().equals("CALL"))
-//					continue;
-//				if (inner.getNumOperands() == 0 || inner.getAddress(0) == null)
-//					continue;
-//
-//				Function called2 = getFunctionAt(inner.getAddress(0));
-//				if (called2 == null)
-//					continue;
-//
-//				if (called2.getName().equals("_Throw_C_error")) {
-//					if (makeClientMessageInsn != null) {
-//						throw new IllegalStateException("more than one option for MakeClientMessage found, disable ClientProt finding");
-//					}
-//
-//					makeClientMessageInsn = insn;
-//					makeClientMessageFn = called;
-//					continue outer;
-//				}
-//			}
-//		}
-//		if (makeClientMessageInsn == null) {
-//			throw new IllegalStateException("MakeClientMessage not found, disable ClientProt finding");
-//		}
+			makeClientMessageFn = getFunctionAt(insn.getAddress(0));
+			makeClientMessageInsn = insn;
+			break;
+		}
 
 		Address someClientProt = null;
 		renameFunction(makeClientMessageFn, "jag::ServerConnection::MakeClientMessage");
@@ -373,8 +337,12 @@ public class RS3NXTRefactorer extends GhidraScript {
 						rcx = true;
 						break;
 					case "RDX":
-						if (insn.getMnemonicString().equals("MOV")) {
-							opcode = insn.getInt(1);
+						if (insn.getMnemonicString().equals("MOV") && insn.getRegister(1) != null && insn.getRegister(1).getBaseRegister().getName().equals("R8")) {
+							if (size == -100)
+								throw new IllegalStateException("attempted to set opcode from size, but size is not set");
+							opcode = size;
+						} else if (insn.getMnemonicString().equals("MOV")) {
+							opcode = (int) insn.getScalar(1).getSignedValue();//insn.getInt(1);
 						} else if (insn.getMnemonicString().equals("XOR") && insn.getRegister(0).getBaseRegister().getName().equals("RDX") && insn.getRegister(1).getBaseRegister().getName().equals("RDX")) {
 							opcode = 0;
 						} else if (insn.getMnemonicString().equals("LEA") && size != -100 && insn.getOpObjects(1).length == 2) {
@@ -389,8 +357,14 @@ public class RS3NXTRefactorer extends GhidraScript {
 						rdx = true;
 						break;
 					case "R8":
-						if (insn.getMnemonicString().equals("R8")) {
-							size = insn.getInt(1);
+						if (insn.getMnemonicString().equals("MOV") && insn.getRegister(1) != null && insn.getRegister(1).getBaseRegister().getName().equals("RDX")) {
+							if (opcode == -100)
+								throw new IllegalStateException("attempted to set size from opcode, but opcode is not set");
+							size = opcode;
+						} else if (insn.getMnemonicString().equals("MOV")) {
+//							printf("???? %d%n", insn.getScalar(1).getSignedValue());
+							size = (int) insn.getScalar(1).getSignedValue();
+//							printf("Size of %d is %d%n", opcode, size);
 						} else if (insn.getMnemonicString().equals("XOR") && insn.getRegister(0).getBaseRegister().getName().equals("R8") && insn.getRegister(1).getBaseRegister().getName().equals("R8")) {
 							size = 0;
 						} else if (insn.getMnemonicString().equals("LEA") && opcode != -100 && insn.getOpObjects(1).length == 2) {
@@ -398,6 +372,9 @@ public class RS3NXTRefactorer extends GhidraScript {
 								throw new IllegalStateException("unexpected register, expected rdx");
 
 							size = (int) (opcode + ((Scalar) insn.getOpObjects(1)[1]).getValue());
+//							if (size != -1 && size != -2)
+//								size &= 0xff;
+//							printf("Size of %d is %d%n", opcode, size);
 						} else {
 							throw new RuntimeException(" unsure how to get size from " + insn + " [opcode = " + opcode + "] at " + insn.getAddress());
 						}
@@ -1231,7 +1208,13 @@ public class RS3NXTRefactorer extends GhidraScript {
 		List<Instruction> insns = new ArrayList<>();
 
 		for (CodeUnit codeUnit : currentProgram.getListing().getCodeUnits(fn.getBody(), true)) {
-			insns.add(getInstructionAt(codeUnit.getAddress()));
+			Instruction insn = getInstructionAt(codeUnit.getAddress());
+			if (insn == null) {
+//				printf("Error: insn == null%n");
+				continue;
+			}
+
+			insns.add(insn);
 		}
 
 		return insns;
@@ -1700,6 +1683,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 			"IF_SETTEXTANTIMACRO",
 			"TRIGGER_ONDIALOGABORT",
 			"IF_SETANGLE",
+			"UNKNOWN_IF_1",
 
 			/* Inventories */
 			"UPDATE_INV_PARTIAL",
@@ -1811,7 +1795,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 			"TEXT_COORD"
 	};
 
-	public static final int NUM_PACKETS = 195;
+	public static final int NUM_PACKETS = 196;
 
 	private ServerProtInfo[] packets = new ServerProtInfo[NUM_PACKETS];
 
