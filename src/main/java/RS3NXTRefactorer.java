@@ -850,6 +850,11 @@ public class RS3NXTRefactorer extends GhidraScript {
 				nameBuilder.append(s.substring(1).toLowerCase(Locale.ROOT));
 			}
 
+			Data data = getDataAt(info.vtable.add(16));
+			if (data == null || data.getValue() == null) {
+				printerr("Addr == null @ " + info.vtable.toString());
+			}
+
 			Address fnAddr = (Address) getDataAt(info.vtable.add(16)).getValue();
 			Function fn;
 			try {
@@ -938,6 +943,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 				if (((int) Stream.of(refs).filter(ref -> ref.getReferenceType().isCall()).count()) != NUM_PACKETS) {
 //				if (getReferencesTo(fn3.getEntryPoint()).length != NUM_PACKETS) {
 					printerr("invalid packet count " + callInsn + ", " + callInsn.getAddress() + " @ " + fn3.getEntryPoint());
+					printerr("expected " + NUM_PACKETS + "packets, got " + (((int) Stream.of(refs).filter(ref -> ref.getReferenceType().isCall()).count())));
 					return;
 				}
 
@@ -1684,6 +1690,8 @@ public class RS3NXTRefactorer extends GhidraScript {
 			"TRIGGER_ONDIALOGABORT",
 			"IF_SETANGLE",
 			"UNKNOWN_IF_1",
+			"UNKONWN_IF_2_930",
+			"UNKONWN_IF_3_930",
 
 			/* Inventories */
 			"UPDATE_INV_PARTIAL",
@@ -1768,6 +1776,8 @@ public class RS3NXTRefactorer extends GhidraScript {
 			"VARCLAN_ENABLE",
 			"VARCLAN",
 			"UPDATE_STAT",
+			"UNKNOWN_VAR_1_930",
+			"UNKNOWN_VAR_2_930",
 
 			/* Web Page */
 			"UPDATE_SITESETTINGS",
@@ -1795,7 +1805,7 @@ public class RS3NXTRefactorer extends GhidraScript {
 			"TEXT_COORD"
 	};
 
-	public static final int NUM_PACKETS = 196;
+	public static final int NUM_PACKETS = 200;
 
 	private ServerProtInfo[] packets = new ServerProtInfo[NUM_PACKETS];
 
